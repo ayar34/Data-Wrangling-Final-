@@ -1,0 +1,221 @@
+---
+author: "Aubrey Yarbrough"
+title: "Quarto Basics"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+---
+Upon Seth's suggestion I am going to run a mixed linear effects model on my world happiness dataset 
+```{python}
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
+import numpy as np
+
+```
+
+```{python}
+happiness = pd.read_csv("~/Downloads/Data Wrangling Class/World-happiness-report-updated_2024.csv", encoding= 'latin1')
+
+happiness.describe()
+
+```
+
+```{python}
+happiness.head(5)
+```
+```{python}
+happiness.shape
+```
+
+```{python}
+happiness['Country name'].nunique()
+```
+
+Lets create a defined function to automatically find cols
+
+```{python}
+def find_column(df, keywords):
+    cols = [c for c in happiness.columns if any(k in c.lower() for k in keywords)]
+    return cols[0] if cols else None
+
+country_col = find_column(happiness, ['country'])
+year_col = find_column(happiness, ['year', 'yr', 'date'])
+happiness_col = find_column(happiness, ['ladder', 'score', 'happiness', 'life', 'wellbeing', 'happy'])
+
+# Fallback manual tries if heuristics failed
+fallbacks = ['Country', 'Country name', 'Country Name', 'country_name', 'country_name']
+for f in fallbacks:
+    if country_col is None and f in happiness.columns:
+        country_col = f
+
+for f in ['Year', 'year']:
+    if year_col is None and f in happiness.columns:
+        year_col = f
+
+for f in ['Ladder score', 'Life Ladder', 'Score', 'Happiness.Score', 'Happiness Score']:
+    if happiness_col is None and f in happiness.columns:
+        happiness_col = f
+
+print("\nDetected (or chosen) columns:")
+print("Country:", country_col)
+print("Year:   ", year_col)
+print("Happiness:", happiness_col)
+
+# If any required column is missing, show a helpful message and a quick sample
+if country_col is None or year_col is None or happiness_col is None:
+    print("\nOne of the key columns couldn't be auto-detected.")
+    print("Please inspect the column list above and set the variables manually, e.g.:")
+    print("country_col = 'Country name'\nyear_col = 'Year'\nhappiness_col = 'Ladder score'")
+    # show sample of first rows to help select column names
+    print("\nFirst 5 rows:")
+    print(df.head(5).T)
+    raise SystemExit("Stop: specify correct column names and re-run.")
+
+
+```
+```{python}
+happiness[year_col] = pd.to_numeric(happiness[year_col], errors= 'coerce')
+```
+
+```{python}
+happiness[country_col]=happiness[country_col].astype('str')
+```
+
+
+```{python}
+us_names =['united states', 'united states of america', 'usa', 'us']
+
+us = happiness[happiness[country_col].str.lower()=='united states']
+if us.empty:
+    us = happiness[happiness[country_col].str.lower().isin(us_names)]
+
+us_period = us[(us[year_col]>=2005) & us[year_col]<=2024].copy()
+
+us_period = us_period.sort_values(by =year_col)
+
+if us_period.empty:
+    print("\nNo US data found in the 2005-2024 range using detected country names.")
+    # show unique country name examples that contain 'united'
+    print("Example country names containing 'united':", 
+          sorted(df[df[country_col].str.contains('United', na=False)][country_col].unique())[:20])
+else:
+    print("\nUS rows found for 2005-2024:", us_period.shape[0])
+    print(us_period[[country_col, year_col, happiness_col]])
+
+
+```
+
+Lets visualize our countries by ladder score
+```{python}
+plt.figure(figsize=(9,5))
+plt.plot(us_period[year_col], us_period[happiness_col], marker ='o')
+
+plt.title(f"United States:{happiness_col}(2005-2024)")
+plt.xlabel("Year")
+plt.ylabel(happiness_col)
+plt.grid(True)
+years = sorted(us_period[year_col].dropna().unique())
+plt.xticks(years, rotation=45)
+plt.tight_layout()
+plt.show()
+
+
+
+```
+
+
+```{python}
+h2023 = happiness[happiness[year_col] == 2023].copy()
+h2023 = h2023[[country_col, happiness_col]].dropna().reset_index(drop=True)
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Create completely random x-positions
+x = np.random.uniform(0, 100, size=len(h2023))  # spread them widely
+y = h2023[happiness_col].values
+
+plt.figure(figsize=(18, 10))
+plt.scatter(x, y, s=40)
+
+# Add labels for each country
+for i, row in h2023.iterrows():
+    plt.text(
+        x[i],
+        y[i] + 0.03,
+        row[country_col],
+        fontsize=8,
+        ha='center'
+    )
+
+plt.title(f"Country Happiness ({happiness_col}) — 2023")
+plt.xlabel("Random country positions (no ordering)")
+plt.ylabel(happiness_col)
+plt.grid(axis='y', linestyle='--', alpha=0.4)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+print(happiness.columns.tolist())
+
+```
+```{python}
+income_col = "Income Group"   # <-- change to your actual column name
+
+# Filter year 2023
+h2023 = happiness[happiness[year_col] == 2023].copy()
+
+# Keep only needed columns
+h2023 = h2023[[country_col, happiness_col, income_col]].dropna().reset_index(drop=True)
+
+# Set random seed for reproducibility
+np.random.seed(42)
+
+# Create random x-positions
+x = np.random.uniform(0, 100, size=len(h2023))
+y = h2023[happiness_col].values
+
+# Unique income categories
+income_levels = h2023[income_col].unique()
+
+# Assign each income level a color from a colormap
+cmap = plt.cm.get_cmap("tab10", len(income_levels))
+income_color_map = {level: cmap(i) for i, level in enumerate(income_levels)}
+
+# Build color array
+colors = h2023[income_col].map(income_color_map)
+
+plt.figure(figsize=(18, 10))
+plt.scatter(x, y, s=50, c=colors)
+
+# Add labels
+for i, row in h2023.iterrows():
+    plt.text(
+        x[i],
+        y[i] + 0.03,
+        row[country_col],
+        fontsize=8,
+        ha="center"
+    )
+
+plt.title(f"Country Happiness ({happiness_col}) in 2023 — Colored by Income Level")
+plt.xlabel("Random Positions (not ordered)")
+plt.ylabel(happiness_col)
+plt.grid(axis='y', linestyle='--', alpha=0.3)
+
+# Legend
+handles = [
+    plt.Line2D([0], [0], marker='o', color='w', label=level,
+               markerfacecolor=income_color_map[level], markersize=10)
+    for level in income_levels
+]
+
+plt.legend(handles=handles, title="Income Level", bbox_to_anchor=(1.05, 1), loc='upper left')
+
+plt.tight_layout()
+plt.show()
+```
