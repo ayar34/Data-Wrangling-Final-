@@ -1,0 +1,182 @@
+# Load the packages and import 2024 Happiness Dataset
+```{python}
+import pandas as pd
+```
+```{python}
+happiness = pd.read_csv("~/Downloads/Data Wrangling Class/World-happiness-report-updated_2024.csv", encoding='latin1')
+print("Dataset 'World-happiness-report-updated_2024.csv' loaded successfully into df_happiness.")
+happiness.head()
+```
+
+# Check for missing and null values 
+```{python}
+print("First 5 rows of the dataset:")
+print(happiness.head())
+
+print("\nDataFrame Information:")
+happiness.info()
+
+print("\nDescriptive Statistics:")
+print(happiness.describe())
+
+print("\nMissing Values per Column:")
+print(happiness.isnull().sum())
+```
+
+# Imput missing values
+```{python}
+for column in ['Log GDP per capita', 'Social support', 'Healthy life expectancy at birth', 'Freedom to make life choices', 'Generosity', 'Perceptions of corruption', 'Positive affect', 'Negative affect']:
+    happiness[column] = happiness[column].fillna(happiness[column].mean())
+
+print("Missing values after imputation:")
+print(happiness.isnull().sum())
+
+happiness['Region'] = happiness['Country name'].apply(lambda x: 'America' if x == 'United States' else 'Rest of World')
+print("\nFirst 5 rows with new 'Region' column:")
+print(happiness.head())
+```
+
+# Run linear mixed-effects model on the world and look at explanatory variables
+```{python}
+import statsmodels.formula.api as smf
+
+# Define the linear mixed-effects model formula
+# Dependent variable: 'Life Ladder'
+# Fixed effects: 'year', 'Log GDP per capita', 'Social support', 'Healthy life expectancy at birth',
+#                  'Freedom to make life choices', 'Generosity', 'Perceptions of corruption',
+#                  'Positive affect', 'Negative affect'
+# Random effect: 'Country name'
+formula = "Q('Life Ladder') ~ year + Q('Log GDP per capita') + Q('Social support') + Q('Healthy life expectancy at birth') + Q('Freedom to make life choices') + Generosity + Q('Perceptions of corruption') + Q('Positive affect') + Q('Negative affect')"
+model = smf.mixedlm(formula, happiness, groups=happiness['Country name'])
+
+# Fit the model
+model_results = model.fit()
+
+# Print the summary of the model results
+print(model_results.summary())
+```
+
+# Visualize the happiness in america vs the rest of the world and run regression on top 3 features
+```{python}
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+plt.figure(figsize=(12, 6))
+sns.lineplot(data=happiness.groupby(['year', 'Region'])['Life Ladder'].mean().reset_index(),
+             x='year', y='Life Ladder', hue='Region', marker='o')
+plt.title('Happiness Trend Over Time: America vs. Rest of World')
+plt.xlabel('Year')
+plt.ylabel('Life Ladder')
+plt.legend(title='Region')
+plt.grid(True)
+plt.show()
+
+plt.figure(figsize=(18, 5))
+plt.subplot(1, 3, 1)
+sns.regplot(data=happiness, x='Log GDP per capita', y='Life Ladder', scatter_kws={'alpha':0.3})
+plt.title('Life Ladder vs. Log GDP per capita')
+plt.xlabel('Log GDP per capita')
+plt.ylabel('Life Ladder')
+
+plt.subplot(1, 3, 2)
+sns.regplot(data=happiness, x='Social support', y='Life Ladder', scatter_kws={'alpha':0.3})
+plt.title('Life Ladder vs. Social support')
+plt.xlabel('Social support')
+plt.ylabel('Life Ladder')
+
+plt.subplot(1, 3, 3)
+sns.regplot(data=happiness, x='Perceptions of corruption', y='Life Ladder', scatter_kws={'alpha':0.3})
+plt.title('Life Ladder vs. Perceptions of corruption')
+plt.xlabel('Perceptions of corruption')
+plt.ylabel('Life Ladder')
+
+plt.tight_layout()
+plt.show()
+```
+
+
+```{python}
+america = happiness[happiness['Country name'] == 'United States']
+print("First 5 rows of df_america:")
+print(america.head())
+```
+
+# Plot our explanatory values for america to try and explain the decline in happiness
+```{python}
+explanatory_variables = [
+    'Log GDP per capita',
+    'Social support',
+    'Healthy life expectancy at birth',
+    'Freedom to make life choices',
+    'Generosity',
+    'Perceptions of corruption',
+    'Positive affect',
+    'Negative affect'
+]
+
+# Determine grid size for subplots. 8 variables, 2 columns would be 4 rows.
+num_variables = len(explanatory_variables)
+num_cols = 2
+num_rows = (num_variables + num_cols - 1) // num_cols # Ceiling division
+
+plt.figure(figsize=(15, 5 * num_rows))
+
+for i, var in enumerate(explanatory_variables):
+    plt.subplot(num_rows, num_cols, i + 1)
+    sns.lineplot(data= america, x='year', y=var, marker='o', color='skyblue')
+    plt.title(f'{var} Trend in America')
+    plt.xlabel('Year')
+    plt.ylabel(var)
+    plt.grid(True)
+    plt.legend(title='Region', labels=['America'])
+
+plt.tight_layout()
+plt.show()
+```
+
+# Ruun a linear regression on America to set up for comparison with rest of the world
+```{python}
+import statsmodels.formula.api as smf
+
+# Define the linear model formula for America
+# Dependent variable: 'Life Ladder'
+# Fixed effects: 'year', 'Log GDP per capita', 'Social support', 'Healthy life expectancy at birth',
+#                  'Freedom to make life choices', 'Generosity', 'Perceptions of corruption',
+#                  'Positive affect', 'Negative affect'
+formula_america = "Q('Life Ladder') ~ year + Q('Log GDP per capita') + Q('Social support') + Q('Healthy life expectancy at birth') + Q('Freedom to make life choices') + Generosity + Q('Perceptions of corruption') + Q('Positive affect') + Q('Negative affect')"
+
+# Fit the linear model on df_america
+model_america = smf.ols(formula_america, data=america).fit()
+
+# Print the summary of the model results for America
+print("\n--- Linear Model Results for America Only ---")
+print(model_america.summary())
+```
+
+# Compare America regression vs Global Mixed effect model
+```{python}
+print("\n--- Comparison of Coefficients (America-Only vs. Global Mixed-Effects) ---")
+
+# Extract fixed effects coefficients from the global mixed-effects model
+global_fixed_effects = model_results.params.drop(['Intercept', 'Group Var'])
+
+# Extract coefficients from the America-only linear model
+america_coefficients = model_america.params
+
+# Create a DataFrame for comparison
+comparison = pd.DataFrame({
+    'Global Mixed-Effects Coef': global_fixed_effects,
+    'America-Only Coef': america_coefficients
+})
+
+# Align indices for proper comparison (handle potential differences in naming, e.g., 'Q()' prefixes)
+comparison.index = comparison.index.str.replace("Q('", "").str.replace("')", "")
+
+# Merge with a common index for variables present in both
+# Note: 'year' and other fixed effects are present in both.
+# Group Var is from the mixed model and not directly comparable.
+# Intercept needs special handling if compared, but here we focus on explanatory variables.
+
+# Print the comparison
+print(comparison.round(3).dropna()) # Drop NA if some params are not directly comparable or missing
+```
